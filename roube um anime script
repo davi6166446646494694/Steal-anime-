@@ -1,0 +1,217 @@
+-- =========================
+-- SERVICES
+-- =========================
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+
+-- =========================
+-- CONFIG
+-- =========================
+local TEMPO_TOTAL_SEG = 8
+local TELEPORTE_INTERVALO = 1
+local ALTURA = 3
+local FRENTE = 15
+local LIMITE_DRAG = 11
+
+-- =========================
+-- GUI
+-- =========================
+local gui = Instance.new("ScreenGui")
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+-- FUNDO AZUL (BACK)
+local fundo = Instance.new("Frame")
+fundo.Size = UDim2.fromOffset(280, 90)
+fundo.Position = UDim2.fromScale(0.4, 0.4)
+fundo.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+fundo.BackgroundTransparency = 0.15
+fundo.BorderSizePixel = 0
+fundo.Parent = gui
+
+local fundoCorner = Instance.new("UICorner")
+fundoCorner.CornerRadius = UDim.new(1, 0)
+fundoCorner.Parent = fundo
+
+-- PAINEL PRINCIPAL
+local frame = Instance.new("Frame")
+frame.Size = UDim2.fromOffset(260, 72)
+frame.Position = UDim2.fromOffset(10, 9)
+frame.BackgroundColor3 = Color3.fromRGB(12,12,12)
+frame.BorderSizePixel = 0
+frame.Parent = fundo
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(1,0)
+corner.Parent = frame
+
+local stroke = Instance.new("UIStroke")
+stroke.Thickness = 3
+stroke.Color = Color3.fromRGB(0,190,255)
+stroke.Parent = frame
+
+local gradient = Instance.new("UIGradient")
+gradient.Color = ColorSequence.new{
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(0,230,255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(0,110,255))
+}
+gradient.Parent = frame
+
+local button = Instance.new("TextButton")
+button.Size = UDim2.fromScale(1,1)
+button.BackgroundTransparency = 1
+button.Text = "ROUBA BRARONT"
+button.Font = Enum.Font.GothamBlack
+button.TextScaled = true
+button.TextColor3 = Color3.new(1,1,1)
+button.Active = true
+button.AutoButtonColor = false
+button.Parent = frame
+
+-- =========================
+-- DRAG x CLICK
+-- =========================
+local dragging = false
+local frameStart
+local mouseStart
+local isClick = true
+
+button.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+	or input.UserInputType == Enum.UserInputType.Touch then
+
+		dragging = true
+		isClick = true
+		mouseStart = input.Position
+		frameStart = fundo.Position
+
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+				if isClick then
+					iniciarSistema()
+				end
+			end
+		end)
+	end
+end)
+
+button.InputChanged:Connect(function(input)
+	if dragging and (
+		input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch
+	) then
+		local delta = input.Position - mouseStart
+
+		if math.abs(delta.X) > LIMITE_DRAG
+		or math.abs(delta.Y) > LIMITE_DRAG then
+			isClick = false
+		end
+
+		fundo.Position = UDim2.new(
+			frameStart.X.Scale,
+			frameStart.X.Offset + delta.X,
+			frameStart.Y.Scale,
+			frameStart.Y.Offset + delta.Y
+		)
+	end
+end)
+
+-- =========================
+-- PEGAR BASES 1 A 8
+-- =========================
+local function pegarBases()
+	local bases = {}
+
+	for _, base in ipairs(workspace.Bases:GetChildren()) do
+		local n = tonumber(base.Name)
+		if n and n >= 1 and n <= 8 then
+			local spawn = base:FindFirstChild("Spawn")
+			if spawn and spawn:IsA("BasePart") then
+				bases[n] = spawn
+			end
+		end
+	end
+
+	return bases
+end
+
+-- =========================
+-- SISTEMA DE ORDEM
+-- =========================
+local emUso = false
+local ordemBases = {1,2,3,4,5,6,7,8}
+
+function iniciarSistema()
+	if emUso then return end
+	emUso = true
+
+	local char = player.Character or player.CharacterAdded:Wait()
+	local hrp = char:WaitForChild("HumanoidRootPart")
+
+	local bases = pegarBases()
+	if not bases then
+		emUso = false
+		return
+	end
+
+	local visitadas = {}
+	for i = 1, 8 do
+		visitadas[i] = false
+	end
+
+	local indice = 1
+
+	local function teleportarOrdem()
+		if indice > #ordemBases then
+			return false
+		end
+
+		local numero = ordemBases[indice]
+		local spawn = bases[numero]
+		if spawn then
+			visitadas[numero] = true
+			hrp.CFrame =
+				spawn.CFrame
+				+ spawn.CFrame.LookVector * FRENTE
+				+ Vector3.new(0, ALTURA, 0)
+		end
+
+		indice += 1
+		return true
+	end
+
+	-- PRIMEIRO TP IMEDIATO
+	teleportarOrdem()
+
+	local inicio = os.clock()
+	local ultimoTP = inicio
+	local tempoTotalMS = TEMPO_TOTAL_SEG * 1000
+
+	while true do
+		local agora = os.clock()
+		local decorrido = agora - inicio
+		local restanteMS = math.max(0, tempoTotalMS - math.floor(decorrido * 1000))
+
+		button.Text = restanteMS .. " ms"
+
+		if agora - ultimoTP >= TELEPORTE_INTERVALO then
+			ultimoTP = agora
+			if not teleportarOrdem() then
+				break
+			end
+		end
+
+		if decorrido >= TEMPO_TOTAL_SEG then
+			break
+		end
+
+		RunService.RenderStepped:Wait()
+	end
+
+	button.Text = "ROUBA BRARONT"
+	emUso = false
+end
